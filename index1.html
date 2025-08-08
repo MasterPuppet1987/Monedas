@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Colección de Monedas</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f9f9f9;
+    }
+    header {
+      background-color: #333;
+      color: #fff;
+      padding: 1rem;
+      text-align: center;
+    }
+    .category {
+      margin: 1rem;
+      padding: 1rem;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .category h2 {
+      margin-top: 0;
+    }
+    .photos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .photo {
+      perspective: 1000px;
+      width: 150px;
+    }
+    .photo-inner {
+      position: relative;
+      width: 100%;
+      transform-style: preserve-3d;
+      transition: transform 0.8s;
+    }
+    .photo:hover .photo-inner {
+      transform: rotateY(180deg);
+    }
+    .photo-front, .photo-back {
+      position: absolute;
+      width: 100%;
+      backface-visibility: hidden;
+      border-radius: 6px;
+      overflow: hidden;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+    }
+    .photo-front img, .photo-back img {
+      width: 100%;
+      max-width: 1881px;
+      max-height: 1843px;
+      height: auto;
+      border-radius: 4px;
+    }
+    .photo-back {
+      transform: rotateY(180deg);
+    }
+    .photo small {
+      display: block;
+      margin-top: 0.3rem;
+      font-size: 0.9em;
+      text-align: center;
+    }
+    .admin-panel {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    .admin-only {
+      display: none;
+      margin-top: 1rem;
+    }
+    .timeline {
+      font-size: 0.9em;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Colección de Monedas</h1>
+  </header>
+  <div id="gallery"></div>
+
+  <div class="admin-panel">
+    <input type="password" id="passwordInput" placeholder="Contraseña">
+    <button onclick="login()">Entrar</button>
+    <div class="admin-only">
+      <h3>Añadir Categoría</h3>
+      <input type="text" id="newCategory" placeholder="Nombre categoría">
+      <button onclick="addCategory()">Añadir</button>
+
+      <h3>Añadir Foto</h3>
+      <select id="categorySelect"></select><br>
+      <input type="file" id="fileInputFront" accept="image/*"><br>
+      <input type="file" id="fileInputBack" accept="image/*"><br>
+      <input type="text" id="urlInputFront" placeholder="URL de la imagen frontal"><br>
+      <input type="text" id="urlInputBack" placeholder="URL de la imagen trasera (opcional)"><br>
+      <input type="text" id="photoName" placeholder="Nombre de la foto"><br>
+      <input type="number" id="photoYear" placeholder="Año"><br>
+      <button onclick="addPhoto()">Subir Foto</button>
+    </div>
+  </div>
+
+  <script>
+    const passwordHash = "68110fb818401ca4d194e7c7b1a2d9b1"; 
+    let isAdmin = false;
+
+    let data = JSON.parse(localStorage.getItem('photoGallery') || '{}');
+
+    function saveData() {
+      localStorage.setItem('photoGallery', JSON.stringify(data));
+    }
+
+    function login() {
+      const input = document.getElementById('passwordInput').value;
+      if (md5(input) === passwordHash) {
+        isAdmin = true;
+        document.querySelector('.admin-only').style.display = 'block';
+        render();
+      } else {
+        alert('Contraseña incorrecta');
+      }
+    }
+
+    function addCategory() {
+      const name = document.getElementById('newCategory').value.trim();
+      if (!name || data[name]) return;
+      data[name] = [];
+      saveData();
+      render();
+    }
+
+    function addPhoto() {
+      const category = document.getElementById('categorySelect').value;
+      const fileFront = document.getElementById('fileInputFront').files[0];
+      const fileBack = document.getElementById('fileInputBack').files[0];
+      const urlFront = document.getElementById('urlInputFront').value.trim();
+      const urlBack = document.getElementById('urlInputBack').value.trim();
+      const name = document.getElementById('photoName').value.trim();
+      const year = parseInt(document.getElementById('photoYear').value.trim());
+
+      const process = (frontSrc, backSrc) => {
+        data[category].push({ frontSrc, backSrc, name, year });
+        data[category].sort((a, b) => (a.year || 0) - (b.year || 0));
+        saveData();
+        render();
+      };
+
+      if (fileFront) {
+        const readerFront = new FileReader();
+        readerFront.onload = () => {
+          if (fileBack) {
+            const readerBack = new FileReader();
+            readerBack.onload = () => process(readerFront.result, readerBack.result);
+            readerBack.readAsDataURL(fileBack);
+          } else if (urlBack) {
+            process(readerFront.result, urlBack);
+          } else {
+            process(readerFront.result, null);
+          }
+        };
+        readerFront.readAsDataURL(fileFront);
+      } else if (urlFront) {
+        const frontSrc = urlFront;
+        const backSrc = urlBack || null;
+        process(frontSrc, backSrc);
+      } else {
+        alert("Sube una imagen frontal o proporciona una URL");
+      }
+    }
+
+    function render() {
+      const gallery = document.getElementById('gallery');
+      const selector = document.getElementById('categorySelect');
+      gallery.innerHTML = '';
+      selector.innerHTML = '';
+
+      for (const [category, photos] of Object.entries(data)) {
+        const catDiv = document.createElement('div');
+        catDiv.className = 'category';
+        const title = document.createElement('h2');
+        title.textContent = category;
+
+        if (isAdmin) {
+          const del = document.createElement('button');
+          del.textContent = 'Eliminar categoría';
+          del.onclick = () => {
+            if (confirm('¿Estás seguro de eliminar esta categoría?')) {
+              delete data[category];
+              saveData();
+              render();
+            }
+          };
+          title.appendChild(del);
+        }
+
+        catDiv.appendChild(title);
+        const row = document.createElement('div');
+        row.className = 'photos';
+
+        for (const photo of photos) {
+          const container = document.createElement('div');
+          container.className = 'photo';
+          const inner = document.createElement('div');
+          inner.className = 'photo-inner';
+
+          const front = document.createElement('div');
+          front.className = 'photo-front';
+          const frontImg = document.createElement('img');
+          frontImg.src = photo.frontSrc;
+          front.appendChild(frontImg);
+          inner.appendChild(front);
+
+          const back = document.createElement('div');
+          back.className = 'photo-back';
+          if (photo.backSrc) {
+            const backImg = document.createElement('img');
+            backImg.src = photo.backSrc;
+            back.appendChild(backImg);
+          } else {
+            const placeholder = document.createElement('div');
+            placeholder.textContent = 'Sin reverso';
+            placeholder.style.padding = '2em';
+            back.appendChild(placeholder);
+          }
+          inner.appendChild(back);
+
+          container.appendChild(inner);
+          if (photo.name) {
+            const n = document.createElement('small');
+            n.innerHTML = "<br><br><br><br><br><br><br><br><br><br>" + photo.name;
+            container.appendChild(n);
+          }
+          if (photo.year) {
+            const t = document.createElement('small');
+            t.className = 'timeline';
+            t.textContent = `Año: ${photo.year}`;
+            container.appendChild(t);
+          }
+
+          if (isAdmin) {
+            const del = document.createElement('button');
+            del.textContent = 'Eliminar';
+            del.onclick = () => {
+              if (confirm('¿Estás seguro de eliminar esta foto?')) {
+                data[category] = data[category].filter(f => f !== photo);
+                saveData();
+                render();
+              }
+            };
+            container.appendChild(del);
+          }
+
+          row.appendChild(container);
+        }
+
+        catDiv.appendChild(row);
+        gallery.appendChild(catDiv);
+        selector.innerHTML += `<option value="${category}">${category}</option>`;
+      }
+    }
+
+    function md5(str) {
+      return CryptoJS.MD5(str).toString();
+    }
+
+    window.onload = render;
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</body>
+</html>
